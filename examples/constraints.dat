@@ -1,0 +1,9 @@
+dG(BA) = dG(AB);
+dG(BS) = dG(AB);   
+dG(S)  = dG(A);
+m(B)   = m(A);
+m(S)   = m(A);
+m(BA)  = m(AB);
+m(BS)  = m(AB);
+m(AB)  = 0
+
