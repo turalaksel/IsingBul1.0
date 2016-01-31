@@ -9,8 +9,7 @@
 import _ising_1D as ising
 import numpy as nm
 from numpy.linalg import svd
-import matplotlib.pyplot as py
-import matplotlib.cm as cm
+import enthought.matplotlib.pyplot as py
 from scipy import optimize
 import re
 import time
@@ -37,7 +36,7 @@ py.rc('ytick', **yTick)  # pass in the font dict as kwargs
 
 #Several constants commonly used in thermodynamics
 ''' boltzmann constant in kcal/(K*mol)'''
-_K_ = 1.9858775E-3
+_K_ = 0.001985878
 
 
 #Some global utility functions
@@ -94,8 +93,6 @@ class IsingDenData:
         self.exp_signal     = nm.array([])
         self.est_signal     = nm.array([])
         self.frac_folded    = nm.array([])
-        self.corr_matrix    = nm.array([])
-        self.ave_folded     = nm.array([])
         self.residuals      = nm.array([])
         self.G_intrin       = []
         self.m_intrin       = []
@@ -119,11 +116,10 @@ class IsingDenData:
         self.repeats     = other.repeats
         self.inters      = other.inters
         self.denaturant  = other.denaturant
-        self.exp_signal  = other.exp_signal  + nm.zeros(other.exp_signal.shape)
-        self.est_signal  = other.est_signal  + nm.zeros(other.est_signal.shape)
-        self.frac_folded = other.frac_folded + nm.zeros(other.frac_folded.shape)
-        self.ave_folded  = other.ave_folded  + nm.zeros(other.ave_folded.shape)
-        self.residuals   = other.residuals   + nm.zeros(other.residuals.shape)
+        self.exp_signal  = other.exp_signal  + nm.zeros(len(other.exp_signal))
+        self.est_signal  = other.est_signal  + nm.zeros(len(other.est_signal))
+        self.frac_folded = other.frac_folded + nm.zeros(len(other.frac_folded))
+        self.residuals   = other.residuals   + nm.zeros(len(other.residuals))
         self.G_intrin    = other.G_intrin
         self.m_intrin    = other.m_intrin
         self.G_inter     = other.G_inter
@@ -180,70 +176,9 @@ class IsingDenData:
         Mu = self.Mu.contents.value
         Au = self.Au.contents.value
         
-        self.frac_folded  = ising.ising_1D_simulate(kT,self.denaturant,G_intrin,G_inter,m_intrin,m_inter)
-        self.ave_folded   = nm.sum(self.frac_folded,axis=0)/self.num_repeats        
-        self.est_signal   = (Mf*self.denaturant+Af)*self.ave_folded + (Mu*self.denaturant+Au)*(1-self.ave_folded)
-    
-    def correlation_matrix(self,denaturant):
+        self.frac_folded  = nm.sum(ising.ising_1D_simulate(kT,self.denaturant,G_intrin,G_inter,m_intrin,m_inter),axis=0)/self.num_repeats
+        self.est_signal   = (Mf*self.denaturant+Af)*self.frac_folded + (Mu*self.denaturant+Au)*(1-self.frac_folded)
         
-        
-        #Initialize the correlation matrix
-        self.corr_matrix = nm.zeros((self.num_repeats,self.num_repeats))
-        
-        self.denaturant = denaturant
-        
-        G_intrin = nm.array([param.contents.value for param in self.G_intrin])
-        G_inter  = nm.array([param.contents.value for param in self.G_inter])
-        m_intrin = nm.array([param.contents.value for param in self.m_intrin])
-        m_inter  = nm.array([param.contents.value for param in self.m_inter])
-        
-        kT = self.kT.contents.value
-        
-        Mf = self.Mf.contents.value
-        Af = self.Af.contents.value
-        Mu = self.Mu.contents.value
-        Au = self.Au.contents.value
-        
-        state   = nm.zeros(self.num_repeats)
-        
-        Z_total = ising.ising_1D_state(kT,state,self.denaturant,G_intrin,G_inter,m_intrin,m_inter)    
-        for repeat1 in range(self.num_repeats):
-            state = nm.zeros(self.num_repeats)
-            state[repeat1] = 1
-            Z_1_folded   = ising.ising_1D_state(kT,state,self.denaturant,G_intrin,G_inter,m_intrin,m_inter)
-            Z_1_unfolded = Z_total - Z_1_folded
-            
-            #Calculate self correlation matrix
-            self.corr_matrix[repeat1,repeat1] = (Z_1_folded+Z_1_unfolded)/Z_total - (Z_1_folded-Z_1_unfolded)**2/(Z_total)**2
-            
-            for repeat2 in range(repeat1+1,self.num_repeats):
-                state = nm.zeros(self.num_repeats)
-                state[repeat2] = 1
-                Z_2_folded   = ising.ising_1D_state(kT,state,self.denaturant,G_intrin,G_inter,m_intrin,m_inter)
-                Z_2_unfolded = Z_total - Z_2_folded
-                
-                #Calculate pairwise correlation
-                state[repeat1] = 1
-                Z_12_ff = ising.ising_1D_state(kT,state,self.denaturant,G_intrin,G_inter,m_intrin,m_inter)
-                
-                state[repeat1] = -1
-                Z_12_uf = ising.ising_1D_state(kT,state,self.denaturant,G_intrin,G_inter,m_intrin,m_inter)  
-                
-                state[repeat2] = -1
-                Z_12_uu = ising.ising_1D_state(kT,state,self.denaturant,G_intrin,G_inter,m_intrin,m_inter)
-                
-                Z_12_fu = Z_total - (Z_12_ff+Z_12_uf+Z_12_uu)
-                
-                self.corr_matrix[repeat1,repeat2] = (Z_12_ff-Z_12_uf-Z_12_fu+Z_12_uu)/Z_total - (Z_1_folded-Z_1_unfolded)/Z_total*(Z_2_folded-Z_2_unfolded)/Z_total
-                self.corr_matrix[repeat2,repeat1] = self.corr_matrix[repeat1,repeat2]
-        #Plot the correlation matrix
-        py.imshow(self.corr_matrix,cmap=cm.jet,interpolation='nearest')
-        py.ylim([-0.5,16.5])
-        py.xlim([-0.5,16.5])
-        py.xticks(nm.arange(17),nm.arange(1,18))
-        py.yticks(nm.arange(17),nm.arange(1,18))
-        py.colorbar()
-        py.show()
     def plot_data(self,color_type='blue'):
         '''
         Plot the data
@@ -255,26 +190,7 @@ class IsingDenData:
         py.ylabel('Signal')
         py.show()
     
-    def return_thermo(self):
-        '''
-        Returns the thermodynamic parameters for the protein
-        '''
-        G_intrin = nm.array([param.contents.value for param in self.G_intrin])
-        G_inter  = nm.array([param.contents.value for param in self.G_inter])
-        m_intrin = nm.array([param.contents.value for param in self.m_intrin])
-        m_inter  = nm.array([param.contents.value for param in self.m_inter])
-        
-        return {"G_intrin":G_intrin,"G_inter":G_inter,"m_intrin":m_intrin,"m_inter":m_inter}
-    
-    def write_frac_folded(self,fname):
-        '''
-        Writes the fraction of folded as a function of denaturant concentration to a file
-        '''
-        f = open(fname,'w')
-        for i in range(len(self.denaturant)):
-            f.write("%.3f\t%.3f\n"%(self.denaturant[i],self.ave_folded[i]))
-        f.close()
-        
+
 class IsingDen:
     '''
     Linear ising model with denaturant
@@ -340,16 +256,14 @@ class IsingDen:
             if len(data_info[0]) == 0:
                 continue
             if len(data_info) > 0:
-                new_ising_data             = IsingDenData()
-                new_ising_data.denaturant = nm.linspace(0.0,10.0,1000)
-                new_ising_data.exp_signal = nm.zeros(1000)
                 protein_name  = data_info[0]
+                data_file     = protein_name+'.dat'
             if len(data_info) > 1:
                 data_file     = data_info[1]
-                new_ising_data.read_data(data_file,signal_type)
             if len(data_info) > 2:
                 weight        = float(data_info[2])
-            
+            new_ising_data             = IsingDenData()
+            new_ising_data.read_data(data_file,signal_type)
             new_ising_data.protein     = protein_name
             new_ising_data.num_repeats = len(protein_name)
             new_ising_data.weight      = weight
@@ -360,8 +274,9 @@ class IsingDen:
             #Decompose the protein into its intrinsic and interfacial terms
             new_ising_data.decompose_components()
             
-            #Add this data to the list
-            self.data.append(new_ising_data)
+            #If the file does not exist then do not add this "data"
+            if len(new_ising_data.exp_signal) > 0:
+                self.data.append(new_ising_data)
     
     def save_params(self,file):
         '''
@@ -516,17 +431,6 @@ class IsingDen:
             self.residuals = nm.append(self.residuals,ising_data.residuals*ising_data.weight)
         self.residuals = nm.array(self.residuals)
     
-    def correlation_matrix(self,denaturant,params = 'None'):
-        '''
-        Build correlation matrix
-        '''
-        #Transfer parameters to the system
-        if not params == 'None':
-            self.params2system(params)
-        #Simulate each protein's curve
-        for ising_data in self.data:
-            ising_data.correlation_matrix(nm.array([denaturant]))
-            
     def errfunc(self,params):
         '''
         Error function for our ising system
@@ -674,8 +578,9 @@ class IsingDen:
     
     def initialize_params(self,file='None'):
         '''
-        Initialize the parameters
+        Read the constraints file
         '''
+        
         #Average values for initial guesses
         ave_g_inter  =  10.0
         ave_g_intrin = -10.0

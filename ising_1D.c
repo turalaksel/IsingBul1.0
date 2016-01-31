@@ -22,13 +22,12 @@
 #include <math.h>
 
 //Put the function headers
-
+//static PyObject  *ising_1D_simulate(PyObject *self,PyObject *args);
 static PyObject *ising_1D_simulate(PyObject *self,PyObject *args);
-static PyObject *ising_1D_state(PyObject *self,PyObject *args);
 
 static PyMethodDef _ising_1D_methods[] = {
+    //{"ising_1D_simulate", ising_1D_simulate, METH_VARARGS},
     {"ising_1D_simulate", ising_1D_simulate, METH_VARARGS},
-    {"ising_1D_state"   , ising_1D_state   , METH_VARARGS},
     {NULL, NULL}     /* Sentinel - marks the end of this structure */
 };
 
@@ -155,102 +154,4 @@ static PyObject *ising_1D_simulate(PyObject *self,PyObject *args)
   free(Z_reverse);
   free(fracFolded);
   return PyArray_Return(fracFolded_NumpyArray);
-}
-
-static PyObject *ising_1D_state(PyObject *self,PyObject *args)
-{
-   double kT;
-   PyArrayObject *den_NumpyArray;
-   PyArrayObject *state_NumpyArray;
-   PyArrayObject *G_intrn_NumpyArray;
-   PyArrayObject *G_inter_NumpyArray;
-   PyArrayObject *m_intrn_NumpyArray;
-   PyArrayObject *m_inter_NumpyArray;
-   PyArrayObject *Z_total_NumpyArray;
-   
-   
-   //State keeps the information about the state of each spin/repeat
-   //1: Repeat can be folded/unfolded
-   //0: Repeat can be unfolded only
-   
-   int i,nRepeats,nDen,dims[2];
-   double *state;
-   double *den;
-   double *G_intrn;
-   double *G_inter;
-   double *m_intrn;
-   double *m_inter;
-   double *Z_total;
-   double **fracFolded;
-   double temp;
-   
-   
-   //Read the parameters passed from python
-   if (!PyArg_ParseTuple(args, "dO!O!O!O!O!O!",&kT,&PyArray_Type,&state_NumpyArray,&PyArray_Type,&den_NumpyArray,&PyArray_Type,&G_intrn_NumpyArray,&PyArray_Type,&G_inter_NumpyArray,&PyArray_Type,&m_intrn_NumpyArray,&PyArray_Type,&m_inter_NumpyArray))
-   {
-     return NULL;
-   }
-   
-   //Get the ctype values of each array/variable
-   nRepeats = G_intrn_NumpyArray->dimensions[0];
-   nDen     = den_NumpyArray->dimensions[0];
-   state    = (double *) state_NumpyArray->data;
-   den      = (double *) den_NumpyArray->data; 
-   G_intrn  = (double *) G_intrn_NumpyArray->data;
-   G_inter  = (double *) G_inter_NumpyArray->data;
-   m_intrn  = (double *) m_intrn_NumpyArray->data;
-   m_inter  = (double *) m_inter_NumpyArray->data;
-   
-   //Prepare Z_total
-   dims[0] = 1;
-   dims[1] = nDen;
-   Z_total_NumpyArray = (PyArrayObject *) PyArray_SimpleNew(2,dims,NPY_DOUBLE);
-   Z_total = (double *) Z_total_NumpyArray->data;
-   
-   //Initialize the arrays: Z_forward 
-   double inter_coef,intrn_coef;
-   int    d;
-  
-   double *Z_forward;
-   Z_forward = (double *) calloc (2,sizeof(double));
-  
-   //We will compute the partition function for each fraction	1->i : Z_forward
-   //								
-  
-   for( d = 0; d < nDen;d++)
-   {
-     // Initialization of the position specific partition functions
-	 // Z_forward will be 1X2 row vector
-	 // Z_reverse will be 2X1 column vector
-	
-	Z_forward[0] = 0;
-	Z_forward[1] = 1;
-	
-	for( i = 0; i < nRepeats; i++)
-	{
-	  intrn_coef  =  exp((G_intrn[i]-m_intrn[i]*den[d])/ kT);
-	  inter_coef  =  exp((G_inter[i]-m_inter[i]*den[d])/ kT);
-	  temp        = Z_forward[0];
-	  if(state[i] == 1)	//Repeat is folded
-	  {
-	    Z_forward[0]  = intrn_coef*inter_coef*Z_forward[0]+ intrn_coef*Z_forward[1];
-	    Z_forward[1]  = 0;
-	  }
-	  else if(state[i] == -1)//Repeat is unfolded
-	  {
-	    Z_forward[0]  = 0;
-	    Z_forward[1]  = temp + Z_forward[1];
-	  }
-	  else if(state[i] == 0)//Repeat can be both
-	  {
-	    Z_forward[0]  = intrn_coef*inter_coef*Z_forward[0]+ intrn_coef*Z_forward[1];
-	    Z_forward[1]  = temp + Z_forward[1];
-	  }
-	}
-	//Find the total partition function
-	Z_total[d] = Z_forward[0]+Z_forward[1];
-    }
-  //Free allocated memories
-  free(Z_forward);
-  return PyArray_Return(Z_total_NumpyArray);
 }
